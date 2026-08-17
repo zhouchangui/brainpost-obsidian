@@ -83,7 +83,7 @@ export default class BrainPostPlugin extends Plugin {
     this.addSettingTab(new BrainPostSettingTab(this.app, this));
     this.registerInterval(window.setInterval(() => this.autoSync(), 30_000));
     this.registerDomEvent(window, "focus", () => this.autoSync());
-    void this.autoSync();
+    this.app.workspace.onLayoutReady(() => void this.autoSync());
   }
 
   async onunload(): Promise<void> {
@@ -305,6 +305,7 @@ export default class BrainPostPlugin extends Plugin {
       }
       const written = await writeSyncEvent(
         this.app.vault,
+        this.app.fileManager,
         event,
         this.settings.projectId,
         this.settings.managedNotes[event.captureId],
@@ -352,7 +353,6 @@ class BrainPostSettingTab extends PluginSettingTab {
   display(): void {
     const { containerEl } = this;
     containerEl.empty();
-    containerEl.createEl("h2", { text: "BrainPost" });
     containerEl.createEl("p", {
       cls: "setting-item-description",
       text: `Status: ${this.plugin.status}`,
@@ -360,13 +360,13 @@ class BrainPostSettingTab extends PluginSettingTab {
 
     let tokenCandidate = "";
     const tokenSetting = new Setting(containerEl)
-      .setName("Identity Token")
+      .setName("Identity token")
       .setDesc(
-        "Stored securely in Obsidian. Anonymous Tokens cannot be recovered if lost.",
+        "Stored securely in Obsidian. Anonymous tokens cannot be recovered if lost.",
       );
     tokenSetting.descEl.appendText(" ");
     tokenSetting.descEl.createEl("a", {
-      text: "Get an Identity Token at BrainPost.",
+      text: "Get an Identity token at BrainPost.",
       href: "https://brainpost.me/#account",
     });
     tokenSetting
@@ -392,7 +392,7 @@ class BrainPostSettingTab extends PluginSettingTab {
       .setDesc(
         this.plugin.settings.bindingId
           ? "On — checks when Obsidian opens or regains focus, then every 30 seconds while it stays open. Use Check now only for an immediate check or retry."
-          : "Connect this Vault to start automatic sync.",
+          : "Connect this vault to start automatic sync.",
       )
       .addButton((button) =>
         button

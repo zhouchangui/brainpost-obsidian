@@ -50,6 +50,7 @@ test("plugin protects one managed note across retries, updates and conflicts", a
   let activationBody;
   let intervalCallback;
   let focusCallback;
+  let layoutReadyCallback;
   let verified = false;
   let failRename = true;
   let failAck = false;
@@ -113,6 +114,18 @@ test("plugin protects one managed note across retries, updates and conflicts", a
         files.delete(file.path);
         file.path = path;
         files.set(path, file);
+      },
+    },
+    fileManager: {
+      trashFile: async (file) => {
+        events.push(["trashFile", file.path]);
+        files.delete(file.path);
+      },
+    },
+    workspace: {
+      onLayoutReady: (callback) => {
+        events.push(["onLayoutReady"]);
+        layoutReadyCallback = callback;
       },
     },
   };
@@ -322,9 +335,11 @@ test("plugin protects one managed note across retries, updates and conflicts", a
     ["setInterval", 30_000],
     ["registerInterval", 1],
     ["registerDomEvent", "focus"],
+    ["onLayoutReady"],
   ]);
   assert.equal(typeof intervalCallback, "function");
   assert.equal(typeof focusCallback, "function");
+  assert.equal(typeof layoutReadyCallback, "function");
   events.length = 0;
   await assert.rejects(plugin.verify(token));
   assert.deepEqual(events, [["request", "/v1/whoami"]]);
@@ -375,6 +390,10 @@ test("plugin protects one managed note across retries, updates and conflicts", a
 
   plugin.settingTab.display();
   assert.equal(renderedSettingNames.includes("API URL"), false);
+  assert.equal(
+    renderedElements.some(({ tag }) => tag === "h1" || tag === "h2"),
+    false,
+  );
   assert.deepEqual(
     renderedElements.find(({ tag }) => tag === "p"),
     {
@@ -385,18 +404,18 @@ test("plugin protects one managed note across retries, updates and conflicts", a
   );
   assert.deepEqual(renderedDescriptionLinks, [
     {
-      setting: "Identity Token",
+      setting: "Identity token",
       tag: "a",
-      text: "Get an Identity Token at BrainPost.",
+      text: "Get an Identity token at BrainPost.",
       href: "https://brainpost.me/#account",
     },
   ]);
   assert.deepEqual(
-    renderedButtons.find(({ name }) => name === "Identity Token"),
+    renderedButtons.find(({ name }) => name === "Identity token"),
     {
-      name: "Identity Token",
+      name: "Identity token",
       description:
-        "Stored securely in Obsidian. Anonymous Tokens cannot be recovered if lost.",
+        "Stored securely in Obsidian. Anonymous tokens cannot be recovered if lost.",
       disabled: false,
       cta: true,
       text: "Verify & connect",

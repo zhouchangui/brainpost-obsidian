@@ -1,4 +1,4 @@
-import { TFile, TFolder, type Vault } from "obsidian";
+import { TFile, TFolder, type FileManager, type Vault } from "obsidian";
 import { PluginApiError, renderCaptureStatus, type SyncEvent } from "./client";
 
 const uuid =
@@ -154,16 +154,13 @@ export function cloudNotePath(vault: Vault, title: string): string {
 
 async function removeManagedStatusNote(
   vault: Vault,
+  fileManager: FileManager,
   captureId: string,
   managedHash: string,
   finalPath: string,
 ): Promise<boolean> {
   const statusPath = `Inbox/${captureId}.md`;
-  if (
-    !managedHash ||
-    statusPath === finalPath ||
-    typeof vault.delete !== "function"
-  ) {
+  if (!managedHash || statusPath === finalPath) {
     return false;
   }
   const status = vault.getAbstractFileByPath(statusPath);
@@ -176,7 +173,7 @@ async function removeManagedStatusNote(
     return latest;
   });
   if (unchanged) {
-    await vault.delete(status);
+    await fileManager.trashFile(status);
     return false;
   }
   return true;
@@ -194,6 +191,7 @@ export async function hashMarkdown(value: string): Promise<string> {
 
 export async function writeSyncEvent(
   vault: Vault,
+  fileManager: FileManager,
   event: SyncEvent,
   projectId: string,
   managedHash = "",
@@ -252,6 +250,7 @@ export async function writeSyncEvent(
       if (current === prepared.markdown) {
         const statusNotePreserved = await removeManagedStatusNote(
           vault,
+          fileManager,
           event.captureId,
           managedHash,
           finalPath,
@@ -276,6 +275,7 @@ export async function writeSyncEvent(
         });
         const statusNotePreserved = await removeManagedStatusNote(
           vault,
+          fileManager,
           event.captureId,
           managedHash,
           finalPath,
@@ -326,6 +326,7 @@ export async function writeSyncEvent(
   await vault.rename(temporaryFile, finalPath);
   const statusNotePreserved = await removeManagedStatusNote(
     vault,
+    fileManager,
     event.captureId,
     managedHash,
     finalPath,

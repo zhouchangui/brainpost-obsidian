@@ -1,6 +1,6 @@
 {
   "name": "@brainpost/obsidian-plugin",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "description": "BrainPost plugin for automatic note sync into Obsidian",
   "type": "module",
@@ -9,7 +9,7 @@
     "node": ">=22"
   },
   "scripts": {
-    "build": "esbuild src/index.ts --bundle --external:obsidian --external:node:* --format=cjs --platform=browser --outfile=main.js",
+    "build": "esbuild src/index.ts --bundle --minify --external:obsidian --external:node:* --format=cjs --platform=browser --outfile=main.js",
     "check": "pnpm typecheck && pnpm test && pnpm build",
     "test": "node --test test/*.test.mjs",
     "typecheck": "tsc --project tsconfig.json --noEmit"

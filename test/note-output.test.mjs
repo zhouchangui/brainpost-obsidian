@@ -32,6 +32,7 @@ async function loadSyncModule() {
     }
   }
   const files = new Map();
+  const trashed = [];
   const vault = {
     getAbstractFileByPath: (path) => files.get(path) ?? null,
     getMarkdownFiles: () =>
@@ -51,7 +52,12 @@ async function loadSyncModule() {
       file.path = path;
       files.set(path, file);
     },
-    delete: async (file) => files.delete(file.path),
+  };
+  const fileManager = {
+    trashFile: async (file) => {
+      trashed.push(file.path);
+      files.delete(file.path);
+    },
   };
   const module = { exports: {} };
   runInNewContext(bundle, {
@@ -66,7 +72,7 @@ async function loadSyncModule() {
     AbortController,
     process,
   });
-  return { module: module.exports, files, vault };
+  return { module: module.exports, fileManager, files, trashed, vault };
 }
 
 function event(markdown, overrides = {}) {
@@ -83,7 +89,7 @@ function event(markdown, overrides = {}) {
 }
 
 test("cloud final output uses its title and removes the untouched status note", async () => {
-  const { module, files, vault } = await loadSyncModule();
+  const { module, fileManager, files, trashed, vault } = await loadSyncModule();
   const status = await module.writeCaptureStatus(vault, {
     id: captureId,
     projectId,
@@ -103,31 +109,39 @@ test("cloud final output uses its title and removes the untouched status note", 
 
   const result = await module.writeSyncEvent(
     vault,
+    fileManager,
     event(markdown),
     projectId,
     status.contentHash,
   );
 
   assert.equal(result.path, "Inbox/习近平与张又侠关系分析.md");
+  assert.deepEqual(trashed, [`Inbox/${captureId}.md`]);
   assert.equal(files.has(`Inbox/${captureId}.md`), false);
   assert.equal(files.get(result.path).data, expectedMarkdown);
 });
 
 test("content-first cloud output reads title from Metadata without adding an H1", async () => {
-  const { module, files, vault } = await loadSyncModule();
+  const { module, fileManager, files, vault } = await loadSyncModule();
   const markdown =
     "## 内容总结\n\n摘要。\n\n## 原始文本内容\n\n原文。\n\n---\n\n### Metadata\n\n- 标题: 元数据标题\n- 来源: example.test\n- 类型: webpage\n- 状态: success\n";
-  const result = await module.writeSyncEvent(vault, event(markdown), projectId);
+  const result = await module.writeSyncEvent(
+    vault,
+    fileManager,
+    event(markdown),
+    projectId,
+  );
   assert.equal(result.path, "Inbox/元数据标题.md");
   assert.equal(files.get(result.path).data, markdown);
 });
 
 test("standard final output uses its Metadata title as the filename", async () => {
-  const { module, files, vault } = await loadSyncModule();
+  const { module, fileManager, files, vault } = await loadSyncModule();
   const markdown =
     "## 内容总结\n\n摘要。\n\n## 原始文本内容\n\n原文。\n\n---\n\n### Metadata\n\n- 标题: 标准网页标题\n- 来源: example.test\n- 类型: webpage\n- 状态: success\n";
   const result = await module.writeSyncEvent(
     vault,
+    fileManager,
     event(markdown, { processingMode: "standard" }),
     projectId,
   );
@@ -136,7 +150,7 @@ test("standard final output uses its Metadata title as the filename", async () =
 });
 
 test("edited processing notes are kept and surfaced", async () => {
-  const { module, files, vault } = await loadSyncModule();
+  const { module, fileManager, files, vault } = await loadSyncModule();
   const status = await module.writeCaptureStatus(vault, {
     id: captureId,
     projectId,
@@ -153,6 +167,7 @@ test("edited processing notes are kept and surfaced", async () => {
 
   const result = await module.writeSyncEvent(
     vault,
+    fileManager,
     event("# Kept status note\n\n## 摘要\n\nA complete result."),
     projectId,
     status.contentHash,
@@ -163,14 +178,20 @@ test("edited processing notes are kept and surfaced", async () => {
 });
 
 test("new cloud filenames are sanitized, disambiguated and retry-stable", async () => {
-  const { module, files, vault } = await loadSyncModule();
+  const { module, fileManager, files, vault } = await loadSyncModule();
   await vault.create("Inbox/Research - Notes - Q.md", "existing note");
   const markdown =
     "# Research: Notes / Q?\n\n## 摘要\n\nSummary.\n\n## 完整整理内容\n\nDetails.";
 
-  const first = await module.writeSyncEvent(vault, event(markdown), projectId);
+  const first = await module.writeSyncEvent(
+    vault,
+    fileManager,
+    event(markdown),
+    projectId,
+  );
   const retry = await module.writeSyncEvent(
     vault,
+    fileManager,
     event(markdown),
     projectId,
     first.contentHash,
@@ -183,11 +204,17 @@ test("new cloud filenames are sanitized, disambiguated and retry-stable", async 
 });
 
 test("different captures with identical titles and content get separate notes", async () => {
-  const { module, files, vault } = await loadSyncModule();
+  const { module, fileManager, files, vault } = await loadSyncModule();
   const markdown = "# Same title\n\n## 摘要\n\nSame content.";
-  const first = await module.writeSyncEvent(vault, event(markdown), projectId);
+  const first = await module.writeSyncEvent(
+    vault,
+    fileManager,
+    event(markdown),
+    projectId,
+  );
   const second = await module.writeSyncEvent(
     vault,
+    fileManager,
     event(markdown, {
       id: "60000000-0000-4000-8000-000000000002",
       captureId: "50000000-0000-4000-8000-000000000002",
@@ -201,10 +228,11 @@ test("different captures with identical titles and content get separate notes", 
 });
 
 test("cloud output without a meaningful title is rejected before writing", async () => {
-  const { module, files, vault } = await loadSyncModule();
+  const { module, fileManager, files, vault } = await loadSyncModule();
   await assert.rejects(
     module.writeSyncEvent(
       vault,
+      fileManager,
       event(
         "# Text Capture\n\n## Organized content\n\nA result without a real title.",
       ),
@@ -216,10 +244,11 @@ test("cloud output without a meaningful title is rejected before writing", async
 });
 
 test("content-first cloud output with an invalid metadata title is rejected", async () => {
-  const { module, files, vault } = await loadSyncModule();
+  const { module, fileManager, files, vault } = await loadSyncModule();
   await assert.rejects(
     module.writeSyncEvent(
       vault,
+      fileManager,
       event(
         "## 内容总结\n\n摘要\n\n## 原始文本内容\n\n原文\n\n---\n\n### Metadata\n\n- 标题: Text Capture\n- 来源: test\n",
       ),
