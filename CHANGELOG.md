@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.2 - 2026-08-17
+
+### Review fixes
+
+- Remove the redundant product name from the community manifest description.
+- Attest the release artifacts and publish only the files consumed by Obsidian.
+
 ## 0.1.1 - 2026-08-17
 
 ### Fixes

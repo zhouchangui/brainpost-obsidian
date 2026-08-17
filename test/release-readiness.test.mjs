@@ -37,13 +37,19 @@ test("community release includes the required public disclosures", async () => {
 });
 
 test("release metadata stays aligned and produces a minified bundle", async () => {
-  const [manifest, pkg, versions] = await Promise.all(
-    ["manifest.json", "package.json", "versions.json"].map(async (path) =>
+  const [manifest, pkg, versions, workflow] = await Promise.all([
+    ...["manifest.json", "package.json", "versions.json"].map(async (path) =>
       JSON.parse(await text(path)),
     ),
-  );
+    text(".github/workflows/release.yml"),
+  ]);
 
   assert.equal(pkg.version, manifest.version);
   assert.equal(versions[manifest.version], manifest.minAppVersion);
+  assert.doesNotMatch(manifest.description, /\bObsidian\b/);
   assert.match(pkg.scripts.build, /(?:^|\s)--minify(?:\s|$)/);
+  assert.match(workflow, /actions\/attest@v4/);
+  assert.match(workflow, /subject-path:\s*\|[\s\S]*main\.js[\s\S]*manifest\.json/);
+  assert.match(workflow, /gh release create[\s\S]*main\.js manifest\.json/);
+  assert.doesNotMatch(workflow, /gh release create[\s\S]*versions\.json/);
 });

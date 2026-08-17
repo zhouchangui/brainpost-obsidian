@@ -76,7 +76,7 @@ pnpm check
 
 ## Release
 
-Keep the versions in `package.json`, `manifest.json`, and `versions.json` aligned, then push a tag that exactly matches the version, such as `0.1.1`. GitHub Actions builds and publishes `main.js`, `manifest.json`, and `versions.json`.
+Keep the versions in `package.json`, `manifest.json`, and `versions.json` aligned, then push a tag that exactly matches the version, such as `0.1.2`. GitHub Actions builds and publishes `main.js` and `manifest.json` with an artifact attestation.
 
 ## License
 

@@ -1,9 +1,9 @@
 {
   "id": "brainpost",
   "name": "BrainPost",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "minAppVersion": "1.11.4",
-  "description": "Connect an Obsidian vault to BrainPost to automatically capture and sync notes across web and apps.",
+  "description": "Connect a vault to BrainPost to automatically capture and sync notes across web and apps.",
   "author": "BrainPost",
   "authorUrl": "https://brainpost.me",
   "isDesktopOnly": true
