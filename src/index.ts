@@ -61,10 +61,15 @@ export default class BrainPostPlugin extends Plugin {
   settings: BrainPostSettings = { ...DEFAULT_SETTINGS };
   verifiedApiUrl = "";
   status = "Enter an Identity Token to connect this Vault.";
+  ready: Promise<void> | null = null;
   private syncInFlight: Promise<void> | null = null;
   private unloading = false;
 
-  async onload() {
+  onload(): void {
+    this.ready = this.initialize();
+  }
+
+  private async initialize(): Promise<void> {
     this.unloading = false;
     const saved = (await this.loadData()) as Partial<BrainPostSettings> | null;
     const projectId = saved?.projectId ?? "";

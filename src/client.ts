@@ -119,20 +119,12 @@ function apiBase(value: string): string {
   }
 }
 
-const fetchTransport: ApiTransport = async (url, init) => {
-  const response = await fetch(url, init);
-  return {
-    status: response.status,
-    json: await response.json().catch(() => null),
-  };
-};
-
 async function callApi<T>(
   apiUrl: string,
   token: string,
   path: string,
   init: { method?: string; body?: unknown } = {},
-  transport: ApiTransport = fetchTransport,
+  transport: ApiTransport,
 ): Promise<T> {
   const response = await transport(`${apiBase(apiUrl)}${path}`, {
     method: init.method ?? "GET",
@@ -159,7 +151,7 @@ async function callApi<T>(
 export async function loadIdentityAndTargets(
   apiUrl: string,
   token: string,
-  transport?: ApiTransport,
+  transport: ApiTransport,
 ) {
   const owner = await callApi<{ owner: { id: string; anonymous: boolean } }>(
     apiUrl,
@@ -187,7 +179,7 @@ export async function verifyPluginIdentity(
     bindingId: string;
   },
   persistToken: (token: string) => void,
-  transport?: ApiTransport,
+  transport: ApiTransport,
 ) {
   const token = input.tokenCandidate || input.storedToken;
   if (!token) {
@@ -218,7 +210,7 @@ export async function activatePluginVault(
     deviceId: string;
     vaultName: string;
   },
-  transport?: ApiTransport,
+  transport: ApiTransport,
 ) {
   return callApi<{
     project: Project;
@@ -252,7 +244,7 @@ export async function loadSyncEvents(
     projectId: string;
     bindingId: string;
   },
-  transport?: ApiTransport,
+  transport: ApiTransport,
 ) {
   return callApi<SyncEvent[]>(
     input.apiUrl,
@@ -270,7 +262,7 @@ export async function loadCaptureStatuses(
     projectId: string;
     bindingId: string;
   },
-  transport?: ApiTransport,
+  transport: ApiTransport,
 ) {
   return callApi<CaptureStatusRecord[]>(
     input.apiUrl,
@@ -288,7 +280,7 @@ export async function acknowledgeSyncEvent(
     eventId: string;
     bindingId: string;
   },
-  transport?: ApiTransport,
+  transport: ApiTransport,
 ) {
   return callApi<{ id: string; acknowledgedAt: string }>(
     input.apiUrl,

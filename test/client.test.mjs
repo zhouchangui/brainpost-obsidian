@@ -13,6 +13,13 @@ const token = `ikt1_${"F".repeat(43)}`;
 const projectId = "20000000-0000-4000-8000-000000000001";
 const deviceId = "30000000-0000-4000-8000-000000000001";
 const activationId = "25000000-0000-4000-8000-000000000001";
+const fetchTransport = async (url, init) => {
+  const response = await fetch(url, init);
+  return {
+    status: response.status,
+    json: await response.json().catch(() => null),
+  };
+};
 
 test("plugin verifies the token before loading activated Vault targets", async () => {
   const originalFetch = globalThis.fetch;
@@ -29,7 +36,11 @@ test("plugin verifies the token before loading activated Vault targets", async (
   };
 
   try {
-    const result = await loadIdentityAndTargets("https://api.example", token);
+    const result = await loadIdentityAndTargets(
+      "https://api.example",
+      token,
+      fetchTransport,
+    );
     assert.deepEqual(result.targets, [
       { id: projectId, name: "Research", status: "active" },
     ]);
@@ -212,7 +223,7 @@ test("invalid tokens return anonymous recovery guidance", async () => {
 
   try {
     await assert.rejects(
-      loadIdentityAndTargets("https://api.example", token),
+      loadIdentityAndTargets("https://api.example", token, fetchTransport),
       (error) =>
         error instanceof PluginApiError &&
         error.code === "invalid_token" &&

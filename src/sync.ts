@@ -114,7 +114,12 @@ function safeNoteName(title: string): string {
   const sanitized = title
     .replace(/\.md$/i, "")
     .replace(/[\\/:*?"<>|]/g, " - ")
-    .replace(/[\u0000-\u001f\u007f]/g, " ")
+    .split("")
+    .filter((character) => {
+      const code = character.charCodeAt(0);
+      return code > 0x1f && code !== 0x7f;
+    })
+    .join("")
     .replace(/\s+/g, " ")
     .trim()
     .replace(/^[\s-]+|[\s-]+$/g, "")

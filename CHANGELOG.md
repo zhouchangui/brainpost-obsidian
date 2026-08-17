@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.3 - 2026-08-17
+
+### Review fixes
+
+- Use the Obsidian request transport at the plugin boundary instead of a global fetch fallback.
+- Keep plugin startup lifecycle methods void-compatible with the Obsidian API.
+- Sanitize control characters without a flagged regular expression.
+
 ## 0.1.2 - 2026-08-17
 
 ### Review fixes

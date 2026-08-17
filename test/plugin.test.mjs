@@ -328,7 +328,8 @@ test("plugin protects one managed note across retries, updates and conflicts", a
   });
   const PluginClass = module.exports.default;
   const plugin = new PluginClass(app);
-  await plugin.onload();
+  plugin.onload();
+  await plugin.ready;
   assert.equal(plugin.settings.apiUrl, "https://brainpost.me/api");
   assert.equal(plugin.settings.bindingId, "");
   assert.deepEqual(events, [
