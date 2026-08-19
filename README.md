@@ -42,7 +42,7 @@ The plugin itself does not accept payments or show paid-feature prompts. Any Bra
 
 ## Local file changes
 
-BrainPost reads and writes plugin-managed Markdown in `Inbox/`. Document captures may also create verified binary attachments under `Inbox/Attachments/<capture-id>/`; Markdown uses relative links so notes and images remain available offline. The plugin downloads and verifies every attachment before exposing the final note, and may use short-lived `_pending-…` files before atomic renames. When a finished note replaces an untouched processing-status note, the status note is moved to the system trash through Obsidian. If that status note was edited locally, it is preserved.
+BrainPost reads and writes plugin-managed Markdown in `Inbox/`. Document captures may also create verified binary attachments under `Inbox/attachments/<capture-id>/`; Markdown uses relative links so notes and images remain available offline. The plugin downloads and verifies every attachment before exposing the final note, and may use short-lived `_pending-…` files before atomic renames. When a finished note replaces an untouched processing-status note, the status note is moved to the system trash through Obsidian. If that status note was edited locally, it is preserved.
 
 The plugin does not access files outside the vault. Identity Token, device ID, and binding secrets are stored through Obsidian's SecretStorage; project identifiers, managed-content hashes, and managed note paths remain in Obsidian's local plugin data.
 
