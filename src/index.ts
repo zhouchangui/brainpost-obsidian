@@ -10,6 +10,8 @@ import {
   acknowledgeSyncEvent,
   activatePluginVault,
   type ApiTransport,
+  type BinaryApiTransport,
+  downloadSyncAsset,
   loadCaptureStatuses,
   loadSyncEvents,
   PluginApiError,
@@ -55,6 +57,20 @@ const obsidianTransport: ApiTransport = async (url, init) => {
     throw: false,
   });
   return { status: response.status, json: response.json };
+};
+
+const obsidianBinaryTransport: BinaryApiTransport = async (url, headers) => {
+  const response = await requestUrl({
+    url,
+    method: "GET",
+    headers,
+    throw: false,
+  });
+  return {
+    status: response.status,
+    bytes: response.arrayBuffer,
+    json: response.json,
+  };
 };
 
 export default class BrainPostPlugin extends Plugin {
@@ -315,6 +331,17 @@ export default class BrainPostPlugin extends Plugin {
         this.settings.projectId,
         this.settings.managedNotes[event.captureId],
         notePath,
+        (asset) =>
+          downloadSyncAsset(
+            {
+              apiUrl: this.settings.apiUrl,
+              token,
+              eventId: event.id,
+              assetId: asset.assetId,
+              bindingId: this.settings.bindingId,
+            },
+            obsidianBinaryTransport,
+          ),
       );
       if (this.unloading) return;
       if (written.result === "created") created += 1;

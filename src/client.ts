@@ -4,12 +4,22 @@ export interface Project {
   status: string;
 }
 
+export interface SyncAsset {
+  assetId: string;
+  logicalId: string;
+  filename: string;
+  mediaType: string;
+  byteSize: number;
+  sha256: string;
+}
+
 export interface SyncEvent {
   id: string;
   projectId: string;
   captureId: string;
   payloadVersion: number;
   markdown: string;
+  assets?: SyncAsset[];
   sourceUrl?: string | null;
   inputKind?: "url" | "text" | "markdown";
   processingMode?: "standard" | "cloud";
@@ -77,6 +87,11 @@ export type ApiTransport = (
   init: { method: string; headers: Record<string, string>; body?: string },
 ) => Promise<ApiResponse>;
 
+export type BinaryApiTransport = (
+  url: string,
+  headers: Record<string, string>,
+) => Promise<{ status: number; bytes: ArrayBuffer; json?: unknown }>;
+
 export class PluginApiError extends Error {
   readonly code: string;
   readonly recovery: string;
@@ -95,6 +110,9 @@ function recoveryFor(status: number, code: string): string {
   if (code === "invalid_token") return TOKEN_RECOVERY;
   if (code === "project_unavailable" || code === "project_not_found") {
     return "Verify the token, then choose an active Project that belongs to this identity.";
+  }
+  if (code === "sync_client_upgrade_required") {
+    return "Upgrade the BrainPost plugin, restart Obsidian, and retry sync.";
   }
   return status >= 500
     ? "Try again. If the problem continues, check the service status."
@@ -123,7 +141,11 @@ async function callApi<T>(
   apiUrl: string,
   token: string,
   path: string,
-  init: { method?: string; body?: unknown } = {},
+  init: {
+    method?: string;
+    body?: unknown;
+    headers?: Record<string, string>;
+  } = {},
   transport: ApiTransport,
 ): Promise<T> {
   const response = await transport(`${apiBase(apiUrl)}${path}`, {
@@ -131,6 +153,7 @@ async function callApi<T>(
     headers: {
       authorization: `Bearer ${token}`,
       "content-type": "application/json",
+      ...init.headers,
     },
     ...(init.body === undefined ? {} : { body: JSON.stringify(init.body) }),
   });
@@ -250,7 +273,7 @@ export async function loadSyncEvents(
     input.apiUrl,
     input.token,
     `/v1/projects/${encodeURIComponent(input.projectId)}/sync-events?bindingId=${encodeURIComponent(input.bindingId)}`,
-    {},
+    { headers: { "x-sync-payload-version": "2" } },
     transport,
   );
 }
@@ -288,5 +311,31 @@ export async function acknowledgeSyncEvent(
     `/v1/sync-events/${encodeURIComponent(input.eventId)}/ack`,
     { method: "POST", body: { bindingId: input.bindingId } },
     transport,
+  );
+}
+
+export async function downloadSyncAsset(
+  input: {
+    apiUrl: string;
+    token: string;
+    eventId: string;
+    assetId: string;
+    bindingId: string;
+  },
+  transport: BinaryApiTransport,
+): Promise<Uint8Array> {
+  const response = await transport(
+    `${apiBase(input.apiUrl)}/v1/sync-events/${encodeURIComponent(input.eventId)}/assets/${encodeURIComponent(input.assetId)}?bindingId=${encodeURIComponent(input.bindingId)}`,
+    { authorization: `Bearer ${input.token}` },
+  );
+  if (response.status >= 200 && response.status < 300) {
+    return new Uint8Array(response.bytes);
+  }
+  const body = response.json as
+    { error?: { code?: string; message?: string } } | undefined;
+  throw new PluginApiError(
+    body?.error?.code ?? "asset_download_failed",
+    body?.error?.message ?? "The Document Asset could not be downloaded.",
+    "No note was changed. Check the connection and retry sync.",
   );
 }

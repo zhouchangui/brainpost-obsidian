@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { createRequire } from "node:module";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
@@ -43,7 +44,13 @@ async function loadSyncModule() {
       files.set(path, file);
       return file;
     },
+    createBinary: async (path, data) => {
+      const file = new TFile(path, data);
+      files.set(path, file);
+      return file;
+    },
     read: async (file) => file.data,
+    readBinary: async (file) => file.data,
     process: async (file, change) => {
       file.data = change(file.data);
     },
@@ -87,6 +94,194 @@ function event(markdown, overrides = {}) {
     ...overrides,
   };
 }
+
+test("payload v2 with private assets is rejected before any Vault write", async () => {
+  const { module, fileManager, files, vault } = await loadSyncModule();
+  await assert.rejects(
+    module.writeSyncEvent(
+      vault,
+      fileManager,
+      event("# Document", {
+        payloadVersion: 2,
+        assets: [
+          {
+            assetId: "90000000-0000-4000-8000-000000000001",
+            logicalId: "image-001",
+            filename: "image-001.png",
+            mediaType: "image/png",
+            byteSize: 68,
+            sha256: "a".repeat(64),
+          },
+        ],
+      }),
+      projectId,
+    ),
+    (error) => error.code === "sync_assets_not_supported",
+  );
+  assert.equal(files.size, 0);
+});
+
+test("payload v2 without assets writes deterministic Markdown normally", async () => {
+  const { module, fileManager, files, vault } = await loadSyncModule();
+  const markdown =
+    "## 内容总结\n\nCSV converted.\n\n## 原始文本内容\n\n| name | value |\n| --- | --- |\n| BrainPost | 1 |\n\n---\n\n### Metadata\n\n- 标题: archive";
+  const result = await module.writeSyncEvent(
+    vault,
+    fileManager,
+    event(markdown, { payloadVersion: 2, assets: [] }),
+    projectId,
+  );
+  assert.equal(result.path, "Inbox/archive.md");
+  assert.equal(files.get(result.path).data, markdown);
+});
+
+test("payload v2 writes verified attachments before the visible Markdown note", async () => {
+  const { module, fileManager, files, vault } = await loadSyncModule();
+  const image = new TextEncoder().encode("png-bytes");
+  const sha256 = createHash("sha256").update(image).digest("hex");
+  const markdown =
+    "## 内容总结\n\nConverted.\n\n## 原始文本内容\n\nBefore.\n\n![Diagram](asset://image-001)\n\nAfter.\n\n---\n\n### Metadata\n\n- 标题: illustrated-report";
+  const result = await module.writeSyncEvent(
+    vault,
+    fileManager,
+    event(markdown, {
+      payloadVersion: 2,
+      processingMode: "standard",
+      assets: [
+        {
+          assetId: "90000000-0000-4000-8000-000000000001",
+          logicalId: "image-001",
+          filename: "image-001.png",
+          mediaType: "image/png",
+          byteSize: image.byteLength,
+          sha256,
+        },
+      ],
+    }),
+    projectId,
+    "",
+    "",
+    async () => image,
+  );
+  const attachmentPath = `Inbox/attachments/${captureId}/image-001.png`;
+  assert.equal(result.path, "Inbox/illustrated-report.md");
+  assert.deepEqual(new Uint8Array(files.get(attachmentPath).data), image);
+  assert.match(
+    files.get(result.path).data,
+    new RegExp(`attachments/${captureId}/image-001\\.png`),
+  );
+  assert.equal(files.get(result.path).data.includes("asset://"), false);
+});
+
+test("payload v2 checksum failure leaves no visible note or attachment", async () => {
+  const { module, fileManager, files, vault } = await loadSyncModule();
+  const first = new TextEncoder().encode("valid-first-image");
+  const second = new TextEncoder().encode("wrong-second-image");
+  await assert.rejects(
+    module.writeSyncEvent(
+      vault,
+      fileManager,
+      event(
+        "![One](asset://image-001)\n![Two](asset://image-002)\n\n### Metadata\n\n- 标题: broken",
+        {
+          payloadVersion: 2,
+          processingMode: "standard",
+          assets: [
+            {
+              assetId: "90000000-0000-4000-8000-000000000001",
+              logicalId: "image-001",
+              filename: "image-001.png",
+              mediaType: "image/png",
+              byteSize: first.byteLength,
+              sha256: createHash("sha256").update(first).digest("hex"),
+            },
+            {
+              assetId: "90000000-0000-4000-8000-000000000002",
+              logicalId: "image-002",
+              filename: "image-002.png",
+              mediaType: "image/png",
+              byteSize: second.byteLength,
+              sha256: "a".repeat(64),
+            },
+          ],
+        },
+      ),
+      projectId,
+      "",
+      "",
+      async (asset) => (asset.logicalId === "image-001" ? first : second),
+    ),
+    (error) => error.code === "asset_checksum_mismatch",
+  );
+  assert.equal(
+    [...files.keys()].some((path) => path.endsWith(".md")),
+    false,
+  );
+  assert.equal(
+    [...files.keys()].some((path) => path.endsWith(".png")),
+    false,
+  );
+});
+
+test("payload v2 retry reuses matching attachments and rejects conflicting bytes", async () => {
+  const { module, fileManager, files, vault } = await loadSyncModule();
+  const image = new TextEncoder().encode("stable-png");
+  const sha256 = createHash("sha256").update(image).digest("hex");
+  const syncEvent = event(
+    "![Diagram](asset://image-001)\n\n### Metadata\n\n- 标题: retry-safe",
+    {
+      payloadVersion: 2,
+      processingMode: "standard",
+      assets: [
+        {
+          assetId: "90000000-0000-4000-8000-000000000001",
+          logicalId: "image-001",
+          filename: "image-001.png",
+          mediaType: "image/png",
+          byteSize: image.byteLength,
+          sha256,
+        },
+      ],
+    },
+  );
+  const first = await module.writeSyncEvent(
+    vault,
+    fileManager,
+    syncEvent,
+    projectId,
+    "",
+    "",
+    async () => image,
+  );
+  const second = await module.writeSyncEvent(
+    vault,
+    fileManager,
+    syncEvent,
+    projectId,
+    "",
+    first.path,
+    async () => image,
+  );
+  assert.equal(second.result, "existing");
+
+  const attachmentPath = `Inbox/attachments/${captureId}/image-001.png`;
+  files.get(attachmentPath).data = new TextEncoder().encode(
+    "other-data",
+  ).buffer;
+  await assert.rejects(
+    module.writeSyncEvent(
+      vault,
+      fileManager,
+      syncEvent,
+      projectId,
+      "",
+      first.path,
+      async () => image,
+    ),
+    (error) => error.code === "attachment_conflict",
+  );
+  assert.equal(files.get(first.path).data.includes("asset://"), false);
+});
 
 test("cloud final output uses its title and removes the untouched status note", async () => {
   const { module, fileManager, files, trashed, vault } = await loadSyncModule();
