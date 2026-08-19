@@ -21,7 +21,7 @@ export interface SyncEvent {
   markdown: string;
   assets?: SyncAsset[];
   sourceUrl?: string | null;
-  inputKind?: "url" | "text" | "markdown";
+  inputKind?: "url" | "text" | "markdown" | "file";
   processingMode?: "standard" | "cloud";
   status?: "ready" | "partial" | "failed";
   createdAt: string;
@@ -33,7 +33,7 @@ export type CaptureStatus =
 export interface CaptureStatusRecord {
   id: string;
   projectId: string;
-  kind: "url" | "text" | "markdown";
+  kind: "url" | "text" | "markdown" | "file";
   sourceUrl: string | null;
   client: string;
   capturedAt: string;

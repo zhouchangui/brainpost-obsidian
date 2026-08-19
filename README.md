@@ -36,13 +36,13 @@ After the plugin is accepted into the Obsidian community directory, search for *
 
 The plugin connects only to `https://brainpost.me/api` to authenticate, connect the current vault, retrieve capture status and finished notes, and acknowledge successful sync events.
 
-Requests may include the Identity Token, a plugin-generated device ID, the vault name, and BrainPost project, binding, capture, or event identifiers. Responses contain account and project metadata, capture status, and the Markdown that the plugin writes locally. The plugin does not upload existing vault notes or absolute local vault paths.
+Requests may include the Identity Token, a plugin-generated device ID, the vault name, and BrainPost project, binding, capture, asset, or event identifiers. Responses contain account and project metadata, capture status, finished Markdown, and private document-attachment bytes. The plugin does not upload existing vault notes or absolute local vault paths.
 
 The plugin itself does not accept payments or show paid-feature prompts. Any BrainPost service plans are handled separately on brainpost.me.
 
 ## Local file changes
 
-BrainPost reads and writes plugin-managed Markdown in `Inbox/`. It may create a short-lived `_pending-…` file before atomically renaming it to the final note. When a finished note replaces an untouched processing-status note, the status note is moved to the system trash through Obsidian. If that status note was edited locally, it is preserved.
+BrainPost reads and writes plugin-managed Markdown in `Inbox/`. Document captures may also create verified binary attachments under `Inbox/Attachments/<capture-id>/`; Markdown uses relative links so notes and images remain available offline. The plugin downloads and verifies every attachment before exposing the final note, and may use short-lived `_pending-…` files before atomic renames. When a finished note replaces an untouched processing-status note, the status note is moved to the system trash through Obsidian. If that status note was edited locally, it is preserved.
 
 The plugin does not access files outside the vault. Identity Token, device ID, and binding secrets are stored through Obsidian's SecretStorage; project identifiers, managed-content hashes, and managed note paths remain in Obsidian's local plugin data.
 
