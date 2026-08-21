@@ -69,7 +69,10 @@ const obsidianBinaryTransport: BinaryApiTransport = async (url, headers) => {
   return {
     status: response.status,
     bytes: response.arrayBuffer,
-    json: response.json,
+    json:
+      response.status >= 200 && response.status < 300
+        ? undefined
+        : response.json,
   };
 };
 
