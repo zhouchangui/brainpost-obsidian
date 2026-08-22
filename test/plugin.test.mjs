@@ -449,7 +449,7 @@ test("plugin protects one managed note across retries, updates and conflicts", a
     {
       name: "Automatic sync",
       description:
-        "On — checks when Obsidian opens or regains focus, then every 30 seconds while it stays open. Use Check now only for an immediate check or retry.",
+        "On — checks when this Vault opens or regains focus, then every 30 seconds while this Vault stays open. Use Check now only for an immediate check or retry.",
       disabled: false,
       cta: false,
       text: "Check now",

@@ -426,7 +426,7 @@ class BrainPostSettingTab extends PluginSettingTab {
       .setName("Automatic sync")
       .setDesc(
         this.plugin.settings.bindingId
-          ? "On — checks when Obsidian opens or regains focus, then every 30 seconds while it stays open. Use Check now only for an immediate check or retry."
+          ? "On — checks when this Vault opens or regains focus, then every 30 seconds while this Vault stays open. Use Check now only for an immediate check or retry."
           : "Connect this vault to start automatic sync.",
       )
       .addButton((button) =>
