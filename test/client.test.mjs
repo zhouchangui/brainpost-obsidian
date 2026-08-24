@@ -99,7 +99,12 @@ test("sync feed and acknowledgement stay scoped to Project and binding", async (
   const bindingId = "40000000-0000-4000-8000-000000000001";
   const requests = [];
   const transport = async (url, init) => {
-    requests.push({ url, method: init.method, body: init.body });
+    requests.push({
+      url,
+      method: init.method,
+      body: init.body,
+      payloadVersion: init.headers["x-sync-payload-version"],
+    });
     return url.endsWith("/ack")
       ? {
           status: 200,
@@ -134,11 +139,13 @@ test("sync feed and acknowledgement stay scoped to Project and binding", async (
       url: `https://api.example/v1/projects/${projectId}/sync-events?bindingId=${bindingId}`,
       method: "GET",
       body: undefined,
+      payloadVersion: "2",
     },
     {
       url: `https://api.example/v1/sync-events/${eventId}/ack`,
       method: "POST",
       body: JSON.stringify({ bindingId }),
+      payloadVersion: undefined,
     },
   ]);
 });

@@ -56,6 +56,10 @@ test("plugin protects one managed note across retries, updates and conflicts", a
   let failAck = false;
   let editBeforeProcess = false;
   let captureStatus = null;
+  const image = new Uint8Array([137, 80, 78, 71]);
+  const imageSha256 = Buffer.from(
+    await webcrypto.subtle.digest("SHA-256", image),
+  ).toString("hex");
   let syncEvent = {
     id: "60000000-0000-4000-8000-000000000001",
     projectId: "30000000-0000-4000-8000-000000000001",
@@ -102,7 +106,14 @@ test("plugin protects one managed note across retries, updates and conflicts", a
         files.set(path, file);
         return file;
       },
+      createBinary: async (path, data) => {
+        events.push(["createBinary", path]);
+        const file = new TFile(path, data);
+        files.set(path, file);
+        return file;
+      },
       read: async (file) => file.data,
+      readBinary: async (file) => file.data,
       process: async (file, change) => {
         events.push(["process", file.path]);
         if (editBeforeProcess) file.data = "last-second user edit";
@@ -300,6 +311,17 @@ test("plugin protects one managed note across retries, updates and conflicts", a
               json: syncEvent ? [syncEvent] : [],
             };
           }
+          if (path.includes("/assets/")) {
+            return {
+              status: 200,
+              arrayBuffer: image.buffer,
+              get json() {
+                throw new SyntaxError(
+                  `Unexpected token '�', "�PNG" is not valid JSON`,
+                );
+              },
+            };
+          }
           if (path.endsWith("/ack")) {
             if (failAck) throw new Error("offline");
             return {
@@ -427,7 +449,7 @@ test("plugin protects one managed note across retries, updates and conflicts", a
     {
       name: "Automatic sync",
       description:
-        "On — checks when Obsidian opens or regains focus, then every 30 seconds while it stays open. Use Check now only for an immediate check or retry.",
+        "On — checks when this Vault opens or regains focus, then every 30 seconds while this Vault stays open. Use Check now only for an immediate check or retry.",
       disabled: false,
       cta: false,
       text: "Check now",
@@ -656,6 +678,40 @@ test("plugin protects one managed note across retries, updates and conflicts", a
     files.has(failedStatusPath),
     false,
     "a user-deleted failed status note must stay deleted",
+  );
+
+  syncEvent = {
+    id: "60000000-0000-4000-8000-000000000020",
+    projectId: "30000000-0000-4000-8000-000000000001",
+    captureId: "50000000-0000-4000-8000-000000000020",
+    payloadVersion: 2,
+    markdown: "![Diagram](asset://image-001)\n",
+    assets: [
+      {
+        assetId: "90000000-0000-4000-8000-000000000020",
+        logicalId: "image-001",
+        filename: "diagram.png",
+        mediaType: "image/png",
+        byteSize: image.byteLength,
+        sha256: imageSha256,
+      },
+    ],
+    inputKind: "file",
+    processingMode: "standard",
+    status: "ready",
+    createdAt: "2026-08-21T01:00:00Z",
+  };
+  events.length = 0;
+  await plugin.sync();
+  assert.equal(
+    files.has(
+      "Inbox/attachments/50000000-0000-4000-8000-000000000020/diagram.png",
+    ),
+    true,
+  );
+  assert.equal(
+    events.some(([kind, path]) => kind === "request" && path.endsWith("/ack")),
+    true,
   );
 
   plugin.syncInFlight = new Promise(() => {});

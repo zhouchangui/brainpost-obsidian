@@ -1,5 +1,10 @@
 import { TFile, TFolder, type FileManager, type Vault } from "obsidian";
-import { PluginApiError, renderCaptureStatus, type SyncEvent } from "./client";
+import {
+  PluginApiError,
+  renderCaptureStatus,
+  type SyncAsset,
+  type SyncEvent,
+} from "./client";
 
 const uuid =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -194,6 +199,176 @@ export async function hashMarkdown(value: string): Promise<string> {
   ).join("");
 }
 
+async function hashBytes(value: Uint8Array): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", new Uint8Array(value));
+  return Array.from(new Uint8Array(digest), (byte) =>
+    byte.toString(16).padStart(2, "0"),
+  ).join("");
+}
+
+async function ensureFolder(vault: Vault, path: string): Promise<void> {
+  const existing = vault.getAbstractFileByPath(path);
+  if (!existing) await vault.createFolder(path);
+  else if (!(existing instanceof TFolder)) {
+    throw new PluginApiError(
+      "attachment_path_conflict",
+      `A file blocks the attachment folder ${path}.`,
+      "No note was changed. Move the conflicting file, then retry sync.",
+    );
+  }
+}
+
+function validSyncAsset(asset: SyncAsset): boolean {
+  return (
+    uuid.test(asset.assetId) &&
+    /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(asset.logicalId) &&
+    /^[A-Za-z0-9][A-Za-z0-9._-]{0,254}$/.test(asset.filename) &&
+    asset.mediaType.startsWith("image/") &&
+    Number.isSafeInteger(asset.byteSize) &&
+    asset.byteSize > 0 &&
+    /^[0-9a-f]{64}$/.test(asset.sha256)
+  );
+}
+
+async function deliverAssets(
+  vault: Vault,
+  event: SyncEvent,
+  loadAsset: (asset: SyncAsset) => Promise<Uint8Array>,
+): Promise<string> {
+  const assets = event.assets ?? [];
+  if (
+    assets.some((asset) => !validSyncAsset(asset)) ||
+    new Set(assets.map((asset) => asset.logicalId)).size !== assets.length ||
+    new Set(assets.map((asset) => asset.filename)).size !== assets.length
+  ) {
+    throw new PluginApiError(
+      "invalid_sync_event",
+      "The cloud returned an invalid Document Asset manifest.",
+      "No note was changed. Retry after the cloud result is corrected.",
+    );
+  }
+  const downloads: Array<{ asset: SyncAsset; bytes: Uint8Array }> = [];
+  for (const asset of assets) {
+    const bytes = await loadAsset(asset);
+    if (
+      bytes.byteLength !== asset.byteSize ||
+      (await hashBytes(bytes)) !== asset.sha256
+    ) {
+      throw new PluginApiError(
+        "asset_checksum_mismatch",
+        `The downloaded Document Asset ${asset.logicalId} failed verification.`,
+        "No note was changed. Retry the download.",
+      );
+    }
+    downloads.push({ asset, bytes });
+  }
+
+  await ensureFolder(vault, "Inbox");
+  await ensureFolder(vault, "Inbox/attachments");
+  const folder = `Inbox/attachments/${event.captureId}`;
+  await ensureFolder(vault, folder);
+  const plans: Array<{
+    asset: SyncAsset;
+    bytes: Uint8Array;
+    path: string;
+    temporaryPath: string;
+    temporaryFile?: TFile;
+    complete: boolean;
+  }> = [];
+  for (const { asset, bytes } of downloads) {
+    const path = `${folder}/${asset.filename}`;
+    const temporaryPath = `${folder}/_pending-${event.id}-${asset.filename}`;
+    const existing = vault.getAbstractFileByPath(path);
+    if (existing instanceof TFile) {
+      if (
+        (await hashBytes(new Uint8Array(await vault.readBinary(existing)))) !==
+        asset.sha256
+      ) {
+        throw new PluginApiError(
+          "attachment_conflict",
+          `The existing attachment ${path} has different content.`,
+          "No file was overwritten. Move the conflicting attachment, then retry sync.",
+        );
+      }
+      plans.push({ asset, bytes, path, temporaryPath, complete: true });
+    } else if (existing) {
+      throw new PluginApiError(
+        "attachment_conflict",
+        `A folder blocks the attachment ${path}.`,
+        "No file was overwritten. Move the conflicting folder, then retry sync.",
+      );
+    } else {
+      const temporary = vault.getAbstractFileByPath(temporaryPath);
+      if (temporary instanceof TFile) {
+        if (
+          (await hashBytes(
+            new Uint8Array(await vault.readBinary(temporary)),
+          )) !== asset.sha256
+        ) {
+          throw new PluginApiError(
+            "attachment_conflict",
+            `The pending attachment ${temporaryPath} has different content.`,
+            "No file was overwritten. Move the conflicting attachment, then retry sync.",
+          );
+        }
+        plans.push({
+          asset,
+          bytes,
+          path,
+          temporaryPath,
+          temporaryFile: temporary,
+          complete: false,
+        });
+      } else if (temporary) {
+        throw new PluginApiError(
+          "attachment_conflict",
+          `A folder blocks the pending attachment ${temporaryPath}.`,
+          "Move the conflicting folder, then retry sync.",
+        );
+      } else {
+        plans.push({ asset, bytes, path, temporaryPath, complete: false });
+      }
+    }
+  }
+
+  for (const plan of plans.filter(({ complete }) => !complete)) {
+    plan.temporaryFile ??= await vault.createBinary(
+      plan.temporaryPath,
+      new Uint8Array(plan.bytes).buffer,
+    );
+    if (
+      (await hashBytes(
+        new Uint8Array(await vault.readBinary(plan.temporaryFile)),
+      )) !== plan.asset.sha256
+    ) {
+      throw new PluginApiError(
+        "asset_checksum_mismatch",
+        `The local Document Asset ${plan.asset.logicalId} failed verification.`,
+        "No note was changed. Retry sync.",
+      );
+    }
+  }
+  for (const plan of plans.filter(({ complete }) => !complete)) {
+    await vault.rename(plan.temporaryFile!, plan.path);
+  }
+
+  let markdown = event.markdown;
+  for (const { asset } of downloads) {
+    markdown = markdown.replaceAll(
+      `asset://${asset.logicalId}`,
+      `attachments/${event.captureId}/${asset.filename}`,
+    );
+  }
+  if (/asset:\/\//.test(markdown)) {
+    throw new PluginApiError(
+      "invalid_sync_event",
+      "The Markdown references a Document Asset missing from its manifest.",
+      "No note was changed. Retry after the cloud result is corrected.",
+    );
+  }
+  return markdown;
+}
+
 export async function writeSyncEvent(
   vault: Vault,
   fileManager: FileManager,
@@ -201,6 +376,7 @@ export async function writeSyncEvent(
   projectId: string,
   managedHash = "",
   managedPath = "",
+  loadAsset?: (asset: SyncAsset) => Promise<Uint8Array>,
 ): Promise<{
   result: "created" | "existing" | "updated";
   contentHash: string;
@@ -208,10 +384,21 @@ export async function writeSyncEvent(
   statusNotePreserved: boolean;
 }> {
   if (
+    event.payloadVersion === 2 &&
+    (event.assets?.length ?? 0) > 0 &&
+    !loadAsset
+  ) {
+    throw new PluginApiError(
+      "sync_assets_not_supported",
+      "This Sync Event contains private document assets that this plugin cannot deliver yet.",
+      "No file was changed. Update the BrainPost plugin, then retry sync.",
+    );
+  }
+  if (
     !uuid.test(event.id) ||
     !uuid.test(event.captureId) ||
     event.projectId !== projectId ||
-    event.payloadVersion !== 1 ||
+    ![1, 2].includes(event.payloadVersion) ||
     typeof event.markdown !== "string" ||
     event.markdown.length === 0
   ) {
@@ -221,13 +408,17 @@ export async function writeSyncEvent(
       "No file was changed. Retry later or check the configured API.",
     );
   }
+  const markdown =
+    event.payloadVersion === 2 && (event.assets?.length ?? 0) > 0
+      ? await deliverAssets(vault, event, loadAsset!)
+      : event.markdown;
   const prepared =
     event.processingMode === "cloud"
-      ? prepareCloudMarkdown(event.markdown)
+      ? prepareCloudMarkdown(markdown)
       : {
-          markdown: event.markdown,
+          markdown,
           title: titleFromMetadata(
-            event.markdown.replaceAll("\r\n", "\n").split("\n"),
+            markdown.replaceAll("\r\n", "\n").split("\n"),
           ),
         };
   const contentHash = await hashMarkdown(prepared.markdown);

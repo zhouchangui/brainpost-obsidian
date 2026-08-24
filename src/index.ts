@@ -10,6 +10,8 @@ import {
   acknowledgeSyncEvent,
   activatePluginVault,
   type ApiTransport,
+  type BinaryApiTransport,
+  downloadSyncAsset,
   loadCaptureStatuses,
   loadSyncEvents,
   PluginApiError,
@@ -55,6 +57,23 @@ const obsidianTransport: ApiTransport = async (url, init) => {
     throw: false,
   });
   return { status: response.status, json: response.json };
+};
+
+const obsidianBinaryTransport: BinaryApiTransport = async (url, headers) => {
+  const response = await requestUrl({
+    url,
+    method: "GET",
+    headers,
+    throw: false,
+  });
+  return {
+    status: response.status,
+    bytes: response.arrayBuffer,
+    json:
+      response.status >= 200 && response.status < 300
+        ? undefined
+        : response.json,
+  };
 };
 
 export default class BrainPostPlugin extends Plugin {
@@ -315,6 +334,17 @@ export default class BrainPostPlugin extends Plugin {
         this.settings.projectId,
         this.settings.managedNotes[event.captureId],
         notePath,
+        (asset) =>
+          downloadSyncAsset(
+            {
+              apiUrl: this.settings.apiUrl,
+              token,
+              eventId: event.id,
+              assetId: asset.assetId,
+              bindingId: this.settings.bindingId,
+            },
+            obsidianBinaryTransport,
+          ),
       );
       if (this.unloading) return;
       if (written.result === "created") created += 1;
@@ -396,7 +426,7 @@ class BrainPostSettingTab extends PluginSettingTab {
       .setName("Automatic sync")
       .setDesc(
         this.plugin.settings.bindingId
-          ? "On — checks when Obsidian opens or regains focus, then every 30 seconds while it stays open. Use Check now only for an immediate check or retry."
+          ? "On — checks when this Vault opens or regains focus, then every 30 seconds while this Vault stays open. Use Check now only for an immediate check or retry."
           : "Connect this vault to start automatic sync.",
       )
       .addButton((button) =>
