@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.2.1 - 2026-09-05
+
+### Features
+
+- Sync private document assets and attachments into the local Obsidian vault.
+- Verify sha256 checksums and deliver attachments before showing completed notes.
+- Retry-safe deduplication and conflict-safe update protection for synced assets.
+
+## 0.2.0 - 2026-08-20
+
+### Features
+
+- Support cloud-processing status updates and structured multimodal note titles.
+- Discard untouched processing status notes once the final note arrives.
+
 ## 0.1.3 - 2026-08-17
 
 ### Review fixes
